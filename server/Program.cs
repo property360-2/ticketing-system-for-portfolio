@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Data;
 using HelpDesk.Api.Models.Entities;
+using HelpDesk.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +59,9 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<AttachmentStorage>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowClient", policy =>
@@ -80,6 +84,12 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowClient");
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
+
+using (var scope = app.Services.CreateScope())
+{
+    await DataSeeder.SeedAsync(scope.ServiceProvider);
+}
 
 app.Run();

@@ -1,0 +1,14 @@
+namespace HelpDesk.Api.Models.Enums;
+
+public enum ActivityAction
+{
+    TICKET_CREATED,
+    TICKET_ASSIGNED,
+    STATUS_CHANGED,
+    PRIORITY_CHANGED,
+    COMMENT_ADDED,
+    ATTACHMENT_UPLOADED,
+    TICKET_RESOLVED,
+    TICKET_REOPENED,
+    TICKET_CLOSED
+}
