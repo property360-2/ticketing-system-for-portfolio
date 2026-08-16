@@ -1,3 +1,8 @@
+// ============================================================================
+// Purpose: Main application entry point and dependency injection configuration
+//          for HelpDesk.Api. Sets up authentication, database, CORS, and routing.
+// ============================================================================
+
 using System.Text;
 using System.Text.Json.Serialization;
 using HelpDesk.Api.Data;
@@ -66,10 +71,25 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowClient", policy =>
     {
-        var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? Array.Empty<string>();
-        policy.WithOrigins(origins)
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        var rawOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? Array.Empty<string>();
+        var sanitizedOrigins = rawOrigins
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim().TrimEnd('/'))
+            .Distinct()
+            .ToArray();
+
+        if (sanitizedOrigins.Length > 0)
+        {
+            policy.WithOrigins(sanitizedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
     });
 });
 
