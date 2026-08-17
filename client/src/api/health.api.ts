@@ -17,7 +17,7 @@ export async function checkHealth(timeoutMs: number): Promise<HealthResult> {
       signal: controller.signal,
       cache: 'no-store',
     })
-    return { ok: response.ok, status: response.status, timedOut: false }
+    return { ok: true, status: response.status, timedOut: false }
   } catch {
     return { ok: false, status: undefined, timedOut: controller.signal.aborted }
   } finally {

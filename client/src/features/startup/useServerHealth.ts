@@ -12,9 +12,8 @@ function retryDelay(tryCount: number): number {
   return Math.min(BASE_RETRY_MS * 2 ** tryCount, MAX_RETRY_MS)
 }
 
-function describeResult(timedOut: boolean | undefined, status: number | undefined): string {
+function describeResult(timedOut: boolean | undefined): string {
   if (timedOut) return 'The server took too long to respond.'
-  if (status && status >= 500) return `The server is not ready yet (HTTP ${status}).`
   return 'Unable to reach the server. It may still be starting up.'
 }
 
@@ -45,7 +44,7 @@ export function useServerHealth() {
         return
       }
 
-      setMessage(describeResult(result.timedOut, result.status))
+      setMessage(describeResult(result.timedOut))
 
       if (Date.now() - startedAt >= MAX_SERVER_WAIT_MS) {
         setStatus('error')
