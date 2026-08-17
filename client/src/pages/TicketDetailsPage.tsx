@@ -27,7 +27,7 @@ import {
   priorityTone,
   statusTone,
 } from '../lib/format'
-import type { TicketPriority, TicketStatus } from '../types'
+import type { Ticket, TicketComment, TicketPriority, TicketStatus } from '../types'
 
 export default function TicketDetailsPage() {
   const { ticketId } = useParams()
@@ -37,9 +37,6 @@ export default function TicketDetailsPage() {
   const [comment, setComment] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [assignToId, setAssignToId] = useState<string>('')
-  const [status, setStatus] = useState<TicketStatus | ''>('')
-  const [priority, setPriority] = useState<TicketPriority | ''>('')
   const [fileInputKey, setFileInputKey] = useState(0)
 
   const ticketQuery = useQuery({
@@ -68,6 +65,8 @@ export default function TicketDetailsPage() {
     enabled: user?.role === 'ADMIN',
   })
 
+  const technicians = (usersQuery.data?.items ?? []).filter((u) => u.role === 'TECHNICIAN')
+
   const invalidateTicket = () => {
     queryClient.invalidateQueries({ queryKey: ['tickets', id] })
     queryClient.invalidateQueries({ queryKey: ['tickets', id, 'comments'] })
@@ -79,25 +78,119 @@ export default function TicketDetailsPage() {
 
   const addCommentMutation = useMutation({
     mutationFn: (content: string) => commentsApi.create(id, content),
-    onSuccess: () => {
-      setComment('')
-      invalidateTicket()
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets', id, 'comments'] })
+
+      const previousComments = queryClient.getQueryData<TicketComment[]>(['tickets', id, 'comments'])
+      const previousTicket = queryClient.getQueryData<Ticket>(['tickets', id])
+
+      const tempComment: TicketComment = {
+        id: -Date.now(),
+        content,
+        userId: user?.id ?? '',
+        userName: user?.name ?? 'You',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      queryClient.setQueryData<TicketComment[]>(
+        ['tickets', id, 'comments'],
+        (old) => (old ?? []).concat(tempComment),
+      )
+      queryClient.setQueryData<Ticket>(['tickets', id], (old) =>
+        old ? { ...old, commentCount: old.commentCount + 1 } : old,
+      )
+
+      return { previousComments, previousTicket }
     },
+    onError: (_error, _variables, context) => {
+      if (context?.previousComments) {
+        queryClient.setQueryData(['tickets', id, 'comments'], context.previousComments)
+      }
+      if (context?.previousTicket) {
+        queryClient.setQueryData(['tickets', id], context.previousTicket)
+      }
+    },
+    onSuccess: () => setComment(''),
+    onSettled: () => invalidateTicket(),
   })
 
   const statusMutation = useMutation({
     mutationFn: (newStatus: TicketStatus) => ticketsApi.updateStatus(id, newStatus),
-    onSuccess: invalidateTicket,
+    onMutate: async (newStatus) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets', id] })
+
+      const previousTicket = queryClient.getQueryData<Ticket>(['tickets', id])
+
+      queryClient.setQueryData<Ticket>(['tickets', id], (old) => {
+        if (!old) return old
+        const now = new Date().toISOString()
+        const base = { ...old, status: newStatus }
+        if (newStatus === 'RESOLVED') {
+          return { ...base, resolvedAt: old.resolvedAt ?? now, closedAt: null }
+        }
+        if (newStatus === 'CLOSED') {
+          return { ...base, resolvedAt: old.resolvedAt ?? now, closedAt: now }
+        }
+        if (newStatus === 'REOPENED') {
+          return { ...base, resolvedAt: null, closedAt: null }
+        }
+        return base
+      })
+
+      return { previousTicket }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousTicket) {
+        queryClient.setQueryData(['tickets', id], context.previousTicket)
+      }
+    },
+    onSettled: () => invalidateTicket(),
   })
 
   const priorityMutation = useMutation({
     mutationFn: (newPriority: TicketPriority) => ticketsApi.updatePriority(id, newPriority),
-    onSuccess: invalidateTicket,
+    onMutate: async (newPriority) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets', id] })
+
+      const previousTicket = queryClient.getQueryData<Ticket>(['tickets', id])
+
+      queryClient.setQueryData<Ticket>(['tickets', id], (old) =>
+        old ? { ...old, priority: newPriority } : old,
+      )
+
+      return { previousTicket }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousTicket) {
+        queryClient.setQueryData(['tickets', id], context.previousTicket)
+      }
+    },
+    onSettled: () => invalidateTicket(),
   })
 
   const assignMutation = useMutation({
     mutationFn: (assignedToId: string | null) => ticketsApi.assign(id, assignedToId),
-    onSuccess: invalidateTicket,
+    onMutate: async (assignedToId) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets', id] })
+
+      const previousTicket = queryClient.getQueryData<Ticket>(['tickets', id])
+      const technician = technicians.find((t) => t.id === assignedToId)
+
+      queryClient.setQueryData<Ticket>(['tickets', id], (old) =>
+        old
+          ? { ...old, assignedToId, assignedToName: technician?.name ?? null }
+          : old,
+      )
+
+      return { previousTicket }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousTicket) {
+        queryClient.setQueryData(['tickets', id], context.previousTicket)
+      }
+    },
+    onSettled: () => invalidateTicket(),
   })
 
   const uploadMutation = useMutation({
@@ -123,26 +216,22 @@ export default function TicketDetailsPage() {
   const isAssignedTech = user?.role === 'TECHNICIAN' && ticket.assignedToId === user?.id
   const isCreator = ticket.createdById === user?.id
   const canManageStatus = isAdmin || isAssignedTech || (isCreator && ['EMPLOYEE', 'TECHNICIAN'].includes(user?.role ?? ''))
-  const technicians = (usersQuery.data?.items ?? []).filter((u) => u.role === 'TECHNICIAN')
 
   const handleStatus = (value: string) => {
-    if (!value) return
-    setStatus('')
+    if (value === ticket.status) return
     statusMutation.mutate(value as TicketStatus, {
       onError: (e) => setActionError(getApiErrorMessage(e)),
     })
   }
 
   const handlePriority = (value: string) => {
-    if (!value) return
-    setPriority('')
+    if (value === ticket.priority) return
     priorityMutation.mutate(value as TicketPriority, {
       onError: (e) => setActionError(getApiErrorMessage(e)),
     })
   }
 
   const handleAssign = (value: string) => {
-    setAssignToId('')
     assignMutation.mutate(value || null, {
       onError: (e) => setActionError(getApiErrorMessage(e)),
     })
@@ -328,7 +417,7 @@ export default function TicketDetailsPage() {
               <div className="mt-3">
                 <Select
                   id="assign"
-                  value={assignToId}
+                  value={ticket.assignedToId ?? ''}
                   onChange={(e) => handleAssign(e.target.value)}
                 >
                   <option value="">Unassigned</option>
@@ -351,18 +440,15 @@ export default function TicketDetailsPage() {
                 </label>
                 <Select
                   id="status"
-                  value={status}
+                  value={ticket.status}
                   onChange={(e) => handleStatus(e.target.value)}
                   disabled={!canManageStatus}
                 >
-                  <option value="">{statusLabels[ticket.status]}</option>
-                  {ticketStatuses
-                    .filter((s) => s !== ticket.status)
-                    .map((s) => (
-                      <option key={s} value={s}>
-                        {statusLabels[s]}
-                      </option>
-                    ))}
+                  {ticketStatuses.map((s) => (
+                    <option key={s} value={s}>
+                      {statusLabels[s]}
+                    </option>
+                  ))}
                 </Select>
               </div>
               <div>
@@ -371,18 +457,15 @@ export default function TicketDetailsPage() {
                 </label>
                 <Select
                   id="priority"
-                  value={priority}
+                  value={ticket.priority}
                   onChange={(e) => handlePriority(e.target.value)}
                   disabled={!canModify}
                 >
-                  <option value="">{priorityLabels[ticket.priority]}</option>
-                  {ticketPriorities
-                    .filter((p) => p !== ticket.priority)
-                    .map((p) => (
-                      <option key={p} value={p}>
-                        {priorityLabels[p]}
-                      </option>
-                    ))}
+                  {ticketPriorities.map((p) => (
+                    <option key={p} value={p}>
+                      {priorityLabels[p]}
+                    </option>
+                  ))}
                 </Select>
               </div>
             </div>
