@@ -16,6 +16,12 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>
 
+const demoAccounts = [
+  { role: 'Admin', email: 'admin@helpdesk.com', password: 'Admin@123' },
+  { role: 'Technician', email: 'mark.rodriguez@helpdesk.com', password: 'User@123' },
+  { role: 'Employee', email: 'emma.wilson@helpdesk.com', password: 'User@123' },
+]
+
 interface LocationState {
   from?: { pathname?: string }
 }
@@ -29,6 +35,7 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -88,8 +95,29 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          Seeded admin: admin@helpdesk.com / Admin@123
+          Click a demo account to autofill credentials
         </p>
+
+        <div className="mt-3 space-y-2">
+          {demoAccounts.map((account) => (
+            <button
+              key={account.role}
+              type="button"
+              onClick={() => {
+                setValue('email', account.email)
+                setValue('password', account.password)
+              }}
+              className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs transition hover:border-blue-300 hover:bg-blue-50"
+            >
+              <span className="inline-block w-20 shrink-0 font-semibold text-gray-500">
+                {account.role}
+              </span>
+              <span className="text-gray-700">
+                {account.email} / {account.password}
+              </span>
+            </button>
+          ))}
+        </div>
       </Card>
     </div>
   )

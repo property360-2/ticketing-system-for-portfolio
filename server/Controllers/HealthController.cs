@@ -1,14 +1,20 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HelpDesk.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/health")]
+[Route("api/health")]
 public class HealthController : ControllerBase
 {
     [HttpGet]
+    [AllowAnonymous]
     public IActionResult Get()
     {
-        return Ok(new { status = "ok", timestamp = DateTime.UtcNow });
+        return Ok(new
+        {
+            status = "ok",
+            timestamp = DateTime.UtcNow
+        });
     }
 }
